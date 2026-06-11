@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RuoYi-Vue-Pro 双端部署控制台</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-fontawesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --primary-glow: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            
+            --status-success: #10b981;
+            --status-success-bg: rgba(16, 185, 129, 0.15);
+            --status-failed: #ef4444;
+            --status-failed-bg: rgba(239, 68, 68, 0.15);
+            --status-deploying: #3b82f6;
+            --status-deploying-bg: rgba(59, 130, 246, 0.15);
+            --status-idle: #6b7280;
+            --status-idle-bg: rgba(107, 114, 128, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Ambient background glow */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(0,0,0,0) 70%);
+            top: -100px;
+            left: -100px;
+            z-index: -1;
+        }
+        
+        body::after {
+            content: '';
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, rgba(0,0,0,0) 70%);
+            bottom: -150px;
+            right: -150px;
+            z-index: -1;
+        }
+
+        header {
+            padding: 1.5rem 4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            backdrop-filter: blur(12px);
+            background-color: rgba(11, 15, 25, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-area i {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            background: linear-gradient(to right, #ffffff, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Tabs System */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .card-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.5rem;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.success {
+            background-color: var(--status-success-bg);
+            color: var(--status-success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-badge.failed {
+            background-color: var(--status-failed-bg);
+            color: var(--status-failed);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-badge.deploying {
+            background-color: var(--status-deploying-bg);
+            color: var(--status-deploying);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            animation: pulse-blue 2s infinite;
+        }
+
+        .status-badge.idle {
+            background-color: var(--status-idle-bg);
+            color: var(--status-idle);
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+
+        /* Detail List */
+        .info-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .info-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .info-value.mono {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 0.15rem 0.3rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            word-break: break-all;
+        }
+
+        .commit-msg {
+            font-size: 0.85rem;
+            line-height: 1.4;
+            background: rgba(255, 255, 255, 0.03);
+            border-left: 3px solid #3b82f6;
+            padding: 0.4rem 0.6rem;
+            border-radius: 0 6px 6px 0;
+            color: var(--text-primary);
+        }
+
+        /* Buttons and controls */
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary-glow);
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Terminal styling */
+        .terminal-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            height: 580px;
+            background-color: #05070c;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.8);
+        }
+
+        .terminal-header {
+            background-color: #0f131a;
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .terminal-dots {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background-color: #ef4444; }
+        .dot-yellow { background-color: #f59e0b; }
+        .dot-green { background-color: #10b981; }
+
+        .terminal-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .terminal-body {
+            flex-grow: 1;
+            padding: 1.25rem;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #d1d5db;
+            white-space: pre-wrap;
+            scroll-behavior: smooth;
+        }
+
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        footer {
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--card-border);
+            margin-top: 2rem;
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <i class="fa-solid fa-server"></i>
+            <h1>RuoYi-Vue-Pro CI/CD Hub</h1>
+        </div>
+        
+        <!-- Tab Selector -->
+        <div class="tabs">
+            <button id="tab-backend" class="tab-btn active" onclick="switchProject('ruoyi-vue-pro')">
+                <i class="fa-brands fa-java"></i> 后端 (ruoyi-vue-pro)
+            </button>
+            <button id="tab-frontend" class="tab-btn" onclick="switchProject('yudao-ui-admin-vue3')">
+                <i class="fa-brands fa-vuejs"></i> 前端 (yudao-ui-admin-vue3)
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Left Panel: Status Details & Trigger Buttons -->
+        <div class="left-panel">
+            
+            <div class="glass-card">
+                <div class="card-title">
+                    <span><i class="fa-solid fa-gauge"></i> 部署状态汇总</span>
+                    <span id="current-badge" class="status-badge idle">IDLE</span>
+                </div>
+                
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">触发来源</span>
+                        <span id="trigger-source" class="info-value">-</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">启动时间</span>
+                        <span id="start-time" class="info-value">-</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">结束时间</span>
+                        <span id="end-time" class="info-value">-</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">状态详情</span>
+                        <span id="status-message" class="info-value" style="color: var(--text-secondary);">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <div class="card-title">
+                    <span><i class="fa-solid fa-code-commit"></i> 最新提交信息</span>
+                </div>
+                
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Commit Hash</span>
+                        <span id="commit-hash" class="info-value mono">-</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span class="info-label">作者</span>
+                        <span id="commit-author" class="info-value">-</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">提交消息</span>
+                        <div id="commit-msg" class="commit-msg">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <div class="card-title">
+                    <span><i class="fa-solid fa-sliders"></i> 手动部署操作</span>
+                </div>
+                <div class="btn-group">
+                    <button id="btn-deploy" class="btn btn-primary" onclick="triggerDeploy(false)">
+                        <i class="fa-solid fa-rocket"></i> 检测更新并部署
+                    </button>
+                    <button id="btn-force-deploy" class="btn btn-secondary" onclick="triggerDeploy(true)">
+                        <i class="fa-solid fa-rotate"></i> 强制完整重新部署
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Panel: Live Terminal Logs -->
+        <div class="right-panel">
+            <div class="terminal-container">
+                <div class="terminal-header">
+                    <div class="terminal-dots">
+                        <div class="dot dot-red"></div>
+                        <div class="dot dot-yellow"></div>
+                        <div class="dot dot-green"></div>
+                    </div>
+                    <div class="terminal-title"><i class="fa-solid fa-terminal"></i> <span id="log-file-name">deploy_backend.log</span></div>
+                    <div style="width: 42px;"></div>
+                </div>
+                <div id="terminal-body" class="terminal-body">正在加载部署日志...</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 Yeeco &amp; RuoYi-Vue-Pro. All rights reserved.</p>
+    </footer>
+
+    <script>
+        let currentProject = 'ruoyi-vue-pro'; // or 'yudao-ui-admin-vue3'
+        let autoScroll = true;
+        let globalStatus = {};
+
+        const statusMap = {
+            'IDLE': { text: '空闲', class: 'idle', icon: 'fa-circle' },
+            'DEPLOYING': { text: '正在部署', class: 'deploying', icon: 'fa-spinner loading-spinner' },
+            'SUCCESS': { text: '部署成功', class: 'success', icon: 'fa-circle-check' },
+            'FAILED': { text: '部署失败', class: 'failed', icon: 'fa-circle-xmark' }
+        };
+
+        const terminalBody = document.getElementById('terminal-body');
+        terminalBody.addEventListener('scroll', () => {
+            const offset = 10;
+            const isAtBottom = terminalBody.scrollHeight - terminalBody.clientHeight - terminalBody.scrollTop <= offset;
+            autoScroll = isAtBottom;
+        });
+
+        function switchProject(project) {
+            currentProject = project;
+            
+            // Switch tabs active classes
+            document.getElementById('tab-backend').classList.toggle('active', project === 'ruoyi-vue-pro');
+            document.getElementById('tab-frontend').classList.toggle('active', project === 'yudao-ui-admin-vue3');
+            
+            // Update Terminal log label
+            document.getElementById('log-file-name').innerText = project === 'ruoyi-vue-pro' ? 'deploy_backend.log' : 'deploy_frontend.log';
+            
+            autoScroll = true;
+            renderStatus();
+            fetchLogs();
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/hooks/api/status');
+                globalStatus = await res.json();
+                renderStatus();
+            } catch (err) {
+                console.error('Error fetching status:', err);
+            }
+        }
+
+        function renderStatus() {
+            const data = currentProject === 'ruoyi-vue-pro' ? globalStatus.backend : globalStatus.frontend;
+            if (!data) return;
+
+            const meta = statusMap[data.status] || statusMap['IDLE'];
+            
+            // Update status card badge
+            const currentBadge = document.getElementById('current-badge');
+            currentBadge.className = `status-badge ${meta.class}`;
+            currentBadge.innerText = meta.text;
+
+            document.getElementById('trigger-source').innerText = data.trigger || '-';
+            document.getElementById('start-time').innerText = data.start_time || '-';
+            document.getElementById('end-time').innerText = data.end_time || '进行中...';
+            document.getElementById('status-message').innerText = data.message || '-';
+
+            // Update commit details
+            document.getElementById('commit-hash').innerText = data.commit_hash ? data.commit_hash.substring(0, 8) : '-';
+            document.getElementById('commit-author').innerText = data.commit_author || '-';
+            document.getElementById('commit-msg').innerText = data.commit_msg || '-';
+
+            // Disable buttons if the selected project is deploying
+            const isDeploying = data.status === 'DEPLOYING';
+            document.getElementById('btn-deploy').disabled = isDeploying;
+            document.getElementById('btn-force-deploy').disabled = isDeploying;
+        }
+
+        async function fetchLogs() {
+            try {
+                const res = await fetch(`/hooks/api/logs?project=${currentProject}`);
+                const text = await res.text();
+                
+                terminalBody.textContent = text;
+                
+                if (autoScroll) {
+                    terminalBody.scrollTop = terminalBody.scrollHeight;
+                }
+            } catch (err) {
+                console.error('Error fetching logs:', err);
+                terminalBody.textContent = '获取部署日志失败。';
+            }
+        }
+
+        async function triggerDeploy(force = false) {
+            const btn = force ? document.getElementById('btn-force-deploy') : document.getElementById('btn-deploy');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner loading-spinner"></i> 请求中...`;
+
+            try {
+                const res = await fetch(`/hooks/deploy?project=${currentProject}&branch=dev&force=${force}`);
+                const message = await res.text();
+                alert(message);
+                
+                await fetchStatus();
+                await fetchLogs();
+            } catch (err) {
+                console.error('Error triggering deploy:', err);
+                alert('触发部署请求失败，请检查网络！');
+            } finally {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }
+        }
+
+        // Initial loading
+        fetchStatus();
+        fetchLogs();
+
+        // Auto refresh loops
+        setInterval(() => {
+            fetchStatus();
+            fetchLogs();
+        }, 2000);
+    </script>
+</body>
+</html>
