@@ -1,0 +1,131 @@
+name: RuoYi-Vue-Pro CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout codebase
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # 2. Setup SSH credentials for remote commands
+      - name: Set up SSH Private Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 2222 }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      # 3. Code change detection
+      # Checks if the server's deployed commit is identical to the current workflow commit
+      - name: Check for Code Updates
+        id: check_updates
+        run: |
+          echo "Comparing server commit with current GitHub commit..."
+          SERVER_COMMIT=$(ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || 2222 }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/yeeco/ruoyi-vue-pro && git rev-parse HEAD" 2>/dev/null || echo "none")
+          echo "Server current commit: $SERVER_COMMIT"
+          echo "GitHub pipeline commit: $GITHUB_SHA"
+          
+          if [ "$SERVER_COMMIT" = "$GITHUB_SHA" ]; then
+            echo "No code updates found. The remote server is already running this commit."
+            echo "无新代码更新，终止部署流程。"
+            echo "skip_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "Updates found. Proceeding with deployment."
+            echo "skip_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 4. Set up Java 8 Environment
+      - name: Set up JDK 8
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        uses: actions/setup-java@v3
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 5. Modify Database Configuration (Dynamic Injection from Secrets)
+      - name: Inject Production Database Configuration
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        run: |
+          DEV_CONFIG="yudao-server/src/main/resources/application-dev.yaml"
+          echo "Injecting production database configurations into $DEV_CONFIG..."
+          
+          # Replace JDBC URL
+          sed -i "s|url: jdbc:mysql://127.0.0.1:3306/.*|url: ${{ secrets.DB_URL }}|g" $DEV_CONFIG
+          
+          # Replace Username
+          sed -i "s|username: root|username: ${{ secrets.DB_USER }}|g" $DEV_CONFIG
+          
+          # Replace Password
+          sed -i "s|password: 123456|password: ${{ secrets.DB_PASS }}|g" $DEV_CONFIG
+
+      # 6. Build and Package Maven JAR
+      - name: Maven Build and Package
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        run: mvn clean package -DskipTests
+
+      # 7. Build Docker Image
+      - name: Build Docker Image
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        run: docker build -t ruoyi-vue-pro:latest .
+
+      # 8. Save Docker Image to Tarball
+      - name: Compress and Save Docker Image
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        run: docker save ruoyi-vue-pro:latest | gzip > ruoyi-vue-pro.tar.gz
+
+      # 9. Transfer Docker Image and Compose files to Server
+      - name: Copy Files to Remote Server via SCP
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 2222 }}
+          source: "ruoyi-vue-pro.tar.gz,docker-compose.yml"
+          target: "/home/yeeco/ruoyi-vue-pro-deploy"
+
+      # 10. SSH to Remote Server and Restart Services
+      - name: SSH Remote Deployment Restart
+        if: steps.check_updates.outputs.skip_deploy != 'true'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 2222 }}
+          script: |
+            echo "==== Remote Server: Starting Deploy ===="
+            # Create project directory if it doesn't exist
+            mkdir -p /home/yeeco/ruoyi-vue-pro
+            
+            # Load new Docker image
+            echo "Loading new docker image..."
+            docker load -i /home/yeeco/ruoyi-vue-pro-deploy/ruoyi-vue-pro.tar.gz
+            
+            # Update docker-compose file
+            cp /home/yeeco/ruoyi-vue-pro-deploy/docker-compose.yml /home/yeeco/ruoyi-vue-pro/docker-compose.yml
+            
+            # Recreate containers
+            cd /home/yeeco/ruoyi-vue-pro
+            echo "Restarting services using Docker Compose..."
+            docker compose up -d --build server redis
+            
+            # Record deployment status locally
+            echo '{"status":"SUCCESS","message":"Deployed via GitHub Actions","start_time":"'$(date "+%Y-%m-%d %H:%M:%S")'","end_time":"'$(date "+%Y-%m-%d %H:%M:%S")'","trigger":"GitHub Actions","commit_hash":"'${GITHUB_SHA}'","commit_msg":"Deployed via workflow","commit_author":"'${GITHUB_ACTOR}'"}' > ./deploy_status.json
+            
+            # Cleanup transfer temp directory and dangling docker images
+            rm -rf /home/yeeco/ruoyi-vue-pro-deploy/ruoyi-vue-pro.tar.gz
+            docker image prune -f
+            echo "==== Remote Server: Deployment Completed Successfully ===="

@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  # Containerized Redis Service with AOF persistence
+  redis:
+    image: redis:7-alpine
+    container_name: yudao-redis
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - /home/yeeco/ruoyi-vue-pro/redis/data:/data
+
+  # ruoyi-vue-pro Backend Server Service
+  server:
+    image: ruoyi-vue-pro:latest
+    container_name: yudao-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "48080:48080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - JAVA_OPTS=-Xms512m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.datasource.dynamic.datasource.master.url=jdbc:mysql://${DB_HOST}:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true -Dspring.datasource.dynamic.datasource.master.username=${DB_USER} -Dspring.datasource.dynamic.datasource.master.password=${DB_PASS} -Dspring.datasource.dynamic.datasource.slave.url=jdbc:mysql://${DB_HOST}:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true -Dspring.datasource.dynamic.datasource.slave.username=${DB_USER} -Dspring.datasource.dynamic.datasource.slave.password=${DB_PASS}
+    volumes:
+      # Persistent application logs
+      - /home/yeeco/ruoyi-vue-pro/logs:/root/logs
+      # Persistent local file uploads
+      - /home/yeeco/ruoyi-vue-pro/uploads:/root/uploads
+    depends_on:
+      - redis
+
+  # WebHook deployment status platform
+  webhook:
+    image: yudao-webhook:latest
+    container_name: yudao-webhook
+    build:
+      context: ./webhook
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+      - PROJECT_PATH=/workspace
+      - PROJECT_PATH_FRONTEND=/workspace-frontend
+    volumes:
+      # 挂载宿主机整个 /var/run 目录，防止 docker.sock 重建时 Inode 断联
+      - /var/run:/var/run
+      # Mount the backend codebase directory from host into the webhook container
+      - /home/yeeco/ruoyi-vue-pro:/workspace
+      # Mount the frontend codebase directory from host into the webhook container
+      - /home/yeeco/yudao-ui-admin-vue3:/workspace-frontend
+
+  # Vue 3 Administration Panel
+  admin:
+    image: yudao-ui-admin:latest
+    container_name: yudao-ui-admin
+    build:
+      context: ${FRONTEND_BUILD_CONTEXT:-../yudao-ui-admin-vue3}
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5300:80"
+    depends_on:
+      - server
+
