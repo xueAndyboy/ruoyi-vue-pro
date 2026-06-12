@@ -122,42 +122,15 @@ app.get('/hooks/deploy', (req, res) => {
         return res.send(`项目 ${project} 正在部署中，请勿重复触发！`);
     }
 
-    const targetDir = project === 'ruoyi-vue-pro' ? PROJECT_PATH : PROJECT_PATH_FRONTEND;
     const isForce = force === 'true';
 
-    // 1. Fetch remote dev code to check
-    exec('git fetch origin dev', { cwd: targetDir }, (fetchErr) => {
-        if (fetchErr) {
-            console.error(`[${project}] Git fetch failed:`, fetchErr);
-            triggerDeployment(project, 'Manual GET (Fallback)', true);
-            return res.send('Git fetch 失败，已强制开始部署流程，请前往状态页面查看进度。');
-        }
-
-        // 2. Compare versions
-        exec('git rev-parse HEAD && git rev-parse origin/dev', { cwd: targetDir }, (parseErr, stdout) => {
-            if (parseErr) {
-                console.error(`[${project}] Git rev-parse failed:`, parseErr);
-                triggerDeployment(project, 'Manual GET (Fallback)', true);
-                return res.send('Git 解析失败，已强制开始部署流程，请前往状态页面查看进度。');
-            }
-
-            const hashes = stdout.trim().split('\n');
-            const localHash = hashes[0];
-            const remoteHash = hashes[1];
-
-            if (localHash === remoteHash && !isForce) {
-                return res.send('无更新代码，跳过部署');
-            }
-
-            // 3. Trigger build & deploy
-            const triggered = triggerDeployment(project, 'Manual GET Interface', isForce);
-            if (triggered) {
-                return res.send(`检测到更新，已开始执行项目 ${project} 的部署流程，请前往状态页面查看进度！`);
-            } else {
-                return res.send('部署启动失败，请检查服务日志。');
-            }
-        });
-    });
+    // 异步启动部署流程，立刻返回响应，避免 Nginx 504 挂起超时
+    const triggered = triggerDeployment(project, 'Manual GET Interface', isForce);
+    if (triggered) {
+        return res.send(`已在后台成功启动项目 ${project} 的部署流程！请返回状态页面实时查看日志和进度。`);
+    } else {
+        return res.status(500).send('部署启动失败，请检查 Webhook 控制台服务日志。');
+    }
 });
 
 // POST Webhook endpoint
