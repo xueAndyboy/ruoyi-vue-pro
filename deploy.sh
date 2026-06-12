@@ -6,6 +6,11 @@ BRANCH="dev"
 FORCE_DEPLOY=false
 TRIGGER_SOURCE="WebHook"
 
+# 获取北京时间 (TZ=Asia/Shanghai)
+get_bj_time() {
+    TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S'
+}
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --project) PROJECT="$2"; shift ;;
@@ -76,7 +81,7 @@ EOF
 
 # 1. Fetch remote branch
 echo "=========================================="
-echo "Deployment Started: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Deployment Started: $(get_bj_time)"
 echo "Project: $PROJECT"
 echo "Trigger: $TRIGGER_SOURCE"
 echo "=========================================="
@@ -90,10 +95,11 @@ REMOTE_HASH=$(git rev-parse origin/"$BRANCH" 2>/dev/null || echo "remote-empty")
 if [ "$LOCAL_HASH" = "$REMOTE_HASH" ] && [ "$FORCE_DEPLOY" = "false" ]; then
     echo "No code changes detected. Skipping deployment."
     echo "无更新代码，跳过部署"
+    update_status "SUCCESS" "No code changes detected. Deployment is up to date." "$(get_bj_time)" "$(get_bj_time)" "$TRIGGER_SOURCE"
     exit 0
 fi
 
-START_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+START_TIME=$(get_bj_time)
 update_status "DEPLOYING" "Code changes detected, starting deployment..." "$START_TIME" "" "$TRIGGER_SOURCE"
 
 # 2. Pull code
@@ -101,7 +107,7 @@ echo "Pulling latest code..."
 git pull origin "$BRANCH"
 if [ $? -ne 0 ]; then
     echo "Error: Git pull failed"
-    update_status "FAILED" "Git pull failed" "$START_TIME" "$(date '+%Y-%m-%d %H:%M:%S')" "$TRIGGER_SOURCE"
+    update_status "FAILED" "Git pull failed" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
     exit 1
 fi
 
@@ -124,7 +130,7 @@ if [ "$PROJECT" = "ruoyi-vue-pro" ]; then
       
     if [ $? -ne 0 ]; then
         echo "Error: Maven compilation failed"
-        update_status "FAILED" "Maven compilation failed" "$START_TIME" "$(date '+%Y-%m-%d %H:%M:%S')" "$TRIGGER_SOURCE"
+        update_status "FAILED" "Maven compilation failed" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
         exit 1
     fi
     
@@ -139,7 +145,7 @@ fi
 
 if [ $? -ne 0 ]; then
     echo "Error: Container startup failed"
-    update_status "FAILED" "Docker container build/startup failed" "$START_TIME" "$(date '+%Y-%m-%d %H:%M:%S')" "$TRIGGER_SOURCE"
+    update_status "FAILED" "Docker container build/startup failed" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
     exit 1
 fi
 
@@ -147,7 +153,7 @@ echo "Cleaning up dangling images..."
 docker image prune -f
 
 echo "=========================================="
-echo "Deployment Succeeded: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Deployment Succeeded: $(get_bj_time)"
 echo "=========================================="
 
-update_status "SUCCESS" "Deployment completed successfully" "$START_TIME" "$(date '+%Y-%m-%d %H:%M:%S')" "$TRIGGER_SOURCE"
+update_status "SUCCESS" "Deployment completed successfully" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
