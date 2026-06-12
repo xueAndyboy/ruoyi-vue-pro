@@ -86,8 +86,38 @@ echo "Project: $PROJECT"
 echo "Trigger: $TRIGGER_SOURCE"
 echo "=========================================="
 
+# 配置 git 超时限制（15秒连不上或30秒内速度低于1KB/s则断开）
+git config http.connectTimeout 15
+git config http.lowSpeedLimit 1000
+git config http.lowSpeedTime 30
+
 echo "Fetching origin $BRANCH..."
 git fetch origin "$BRANCH"
+FETCH_RES=$?
+
+if [ $FETCH_RES -ne 0 ]; then
+    echo "[警告] 直连 GitHub 官方源超时或失败，正在尝试通过国内加速代理源（ghproxy.cn）重新获取..."
+    
+    # 备份原 URL
+    ORIGIN_URL=$(git remote get-url origin)
+    # 构造代理 URL
+    PROXY_URL=$(echo "$ORIGIN_URL" | sed 's|https://github.com|https://ghproxy.cn/https://github.com|g')
+    
+    echo "临时切换源至: $PROXY_URL"
+    git remote set-url origin "$PROXY_URL"
+    
+    # 忽略 SSL 证书错误（代理源证书常见问题）
+    git -c http.sslVerify=false fetch origin "$BRANCH"
+    FETCH_RES=$?
+    
+    # 无论成功与否，必须还原官方源地址，防止污染本地 Git 配置
+    git remote set-url origin "$ORIGIN_URL"
+fi
+
+if [ $FETCH_RES -ne 0 ]; then
+    echo "[错误] Git fetch 失败（官方源和代理镜像源均不可达，请检查网络）"
+    exit 1
+fi
 
 LOCAL_HASH=$(git rev-parse HEAD 2>/dev/null || echo "local-empty")
 REMOTE_HASH=$(git rev-parse origin/"$BRANCH" 2>/dev/null || echo "remote-empty")
@@ -102,12 +132,12 @@ fi
 START_TIME=$(get_bj_time)
 update_status "DEPLOYING" "Code changes detected, starting deployment..." "$START_TIME" "" "$TRIGGER_SOURCE"
 
-# 2. Pull code
-echo "Pulling latest code..."
-git pull origin "$BRANCH"
+# 2. Reset and align code (强制本地对齐，丢弃未跟踪修改，不二次联网)
+echo "Aligning code to origin/$BRANCH..."
+git reset --hard origin/"$BRANCH"
 if [ $? -ne 0 ]; then
-    echo "Error: Git pull failed"
-    update_status "FAILED" "Git pull failed" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
+    echo "Error: Git reset failed"
+    update_status "FAILED" "Git reset --hard failed" "$START_TIME" "$(get_bj_time)" "$TRIGGER_SOURCE"
     exit 1
 fi
 
